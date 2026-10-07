@@ -1,7 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-<resources>
-    <string name="app_name">CMU Database</string>
-    <string name="title_activity_main">CMU Database</string>
-    <string name="package_name">lr.gov.epa.cmu</string>
-    <string name="custom_url_scheme">lr.gov.epa.cmu</string>
-</resources>
