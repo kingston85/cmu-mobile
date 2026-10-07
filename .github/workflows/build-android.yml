@@ -19,19 +19,34 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 21
-          cache: gradle
 
       - uses: android-actions/setup-android@v3
 
+      # Works whether the files are at the top of the repository or inside a sub-folder
+      - name: Find the project folder
+        run: |
+          PKG=$(find . -name package.json -not -path "*/node_modules/*" | awk '{ print length, $0 }' | sort -n | head -1 | cut -d' ' -f2-)
+          if [ -z "$PKG" ]; then
+            echo "::error::package.json not found. Upload all files from the unzipped cmu-mobile folder."
+            echo "Files in the repository:"; find . -maxdepth 3 -not -path "./.git*" | head -50
+            exit 1
+          fi
+          PROJ=$(dirname "$PKG")
+          echo "Project folder: $PROJ"; ls -la "$PROJ"
+          for f in src/App.jsx android/gradlew android/app/build.gradle capacitor.config.json vite.config.js index.html; do
+            [ -e "$PROJ/$f" ] || { echo "::error::Missing file: $f — upload it to the same place as package.json"; exit 1; }
+          done
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+
       - name: Install and build web app
         run: |
-          npm ci
+          cd "$PROJ"
+          if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm run build
           npx cap sync android
 
@@ -44,30 +59,29 @@ jobs:
             echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/cmu-release.jks"
             echo "CMU_KEYSTORE_PATH=$RUNNER_TEMP/cmu-release.jks" >> "$GITHUB_ENV"
           else
-            echo "No release key configured - building a test (debug-signed) APK."
+            echo "No release key configured - building a test APK."
           fi
 
       - name: Build APK
-        working-directory: android
         env:
           CMU_KEYSTORE_PASSWORD: ${{ secrets.CMU_KEYSTORE_PASSWORD }}
           CMU_KEY_ALIAS: ${{ secrets.CMU_KEY_ALIAS }}
           CMU_KEY_PASSWORD: ${{ secrets.CMU_KEY_PASSWORD }}
         run: |
+          cd "$PROJ/android"
           chmod +x gradlew
+          mkdir -p "$GITHUB_WORKSPACE/out"
           if [ -n "$CMU_KEYSTORE_PATH" ]; then
             ./gradlew assembleRelease bundleRelease --no-daemon
-            cp app/build/outputs/apk/release/app-release.apk ../CMU-Database-$VERSION_NAME.apk
-            cp app/build/outputs/bundle/release/app-release.aab ../CMU-Database-$VERSION_NAME.aab
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/out/CMU-Database-$VERSION_NAME.apk"
+            cp app/build/outputs/bundle/release/app-release.aab "$GITHUB_WORKSPACE/out/CMU-Database-$VERSION_NAME.aab"
           else
             ./gradlew assembleDebug --no-daemon
-            cp app/build/outputs/apk/debug/app-debug.apk ../CMU-Database-$VERSION_NAME-test.apk
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/CMU-Database-$VERSION_NAME-test.apk"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: CMU-Database-APK
-          path: |
-            CMU-Database-*.apk
-            CMU-Database-*.aab
+          path: out/
           retention-days: 30
