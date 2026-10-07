@@ -9,23 +9,32 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       VERSION_CODE: ${{ github.run_number }}
       VERSION_NAME: 1.0.${{ github.run_number }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 21
 
-      - uses: android-actions/setup-android@v3
+      # GitHub's Ubuntu machines already include the Android SDK; just add what this app needs.
+      - name: Prepare Android SDK
+        run: |
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK" >> "$GITHUB_ENV"
+          SM=$(ls -d "$SDK"/cmdline-tools/*/bin/sdkmanager 2>/dev/null | sort -V | tail -1)
+          echo "Using $SM"
+          yes | "$SM" --licenses > /dev/null || true
+          "$SM" --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       # Works whether the files are at the top of the repository or inside a sub-folder
       - name: Find the project folder
@@ -80,7 +89,7 @@ jobs:
             cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/out/CMU-Database-$VERSION_NAME-test.apk"
           fi
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CMU-Database-APK
           path: out/
