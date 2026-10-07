@@ -1,9 +1,0 @@
-{
-  "appId": "lr.gov.epa.cmu",
-  "appName": "CMU Database",
-  "webDir": "dist",
-  "android": { "allowMixedContent": false },
-  "plugins": {
-    "CapacitorHttp": { "enabled": true }
-  }
-}
