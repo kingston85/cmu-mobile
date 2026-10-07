@@ -1,0 +1,73 @@
+# Builds the CMU Database Android app on every push to main (or on demand).
+# Download the APK from: Actions tab → latest run → Artifacts → "CMU-Database-APK".
+name: Build Android APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      VERSION_CODE: ${{ github.run_number }}
+      VERSION_NAME: 1.0.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install and build web app
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      # Optional: a permanent release key from repository secrets (see README).
+      - name: Restore release keystore (if configured)
+        env:
+          KS_B64: ${{ secrets.CMU_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/cmu-release.jks"
+            echo "CMU_KEYSTORE_PATH=$RUNNER_TEMP/cmu-release.jks" >> "$GITHUB_ENV"
+          else
+            echo "No release key configured - building a test (debug-signed) APK."
+          fi
+
+      - name: Build APK
+        working-directory: android
+        env:
+          CMU_KEYSTORE_PASSWORD: ${{ secrets.CMU_KEYSTORE_PASSWORD }}
+          CMU_KEY_ALIAS: ${{ secrets.CMU_KEY_ALIAS }}
+          CMU_KEY_PASSWORD: ${{ secrets.CMU_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          if [ -n "$CMU_KEYSTORE_PATH" ]; then
+            ./gradlew assembleRelease bundleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk ../CMU-Database-$VERSION_NAME.apk
+            cp app/build/outputs/bundle/release/app-release.aab ../CMU-Database-$VERSION_NAME.aab
+          else
+            ./gradlew assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk ../CMU-Database-$VERSION_NAME-test.apk
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CMU-Database-APK
+          path: |
+            CMU-Database-*.apk
+            CMU-Database-*.aab
+          retention-days: 30
